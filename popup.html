@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatGPT Approval Helper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <div class="row">
+      <div>
+        <div class="title">Conversation 승인 자동화</div>
+        <div id="status" class="status">상태 확인 중...</div>
+      </div>
+      <label class="switch" aria-label="자동 승인 켜기 또는 끄기">
+        <input id="enabled" type="checkbox">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <p class="note">ON일 때 <code>Allow &lt;APP&gt; for this conversation</code> 승인만 자동 처리합니다.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
