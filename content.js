@@ -1,8 +1,11 @@
 (() => {
   'use strict';
 
-  const CONVERSATION_LABEL_RE = /^Allow\s+(.+?)\s+for this conversation$/i;
-  const KOREAN_APPROVAL_RE = /ChatGPT가\s+(.+?)을\(를\)\s+사용하도록\s+허용할까요\?/;
+  const ENGLISH_CONVERSATION_LABEL_RE = /^Allow\s+(.+?)\s+for this conversation$/i;
+  const CONVERSATION_SCOPE_RE = /(?:\bthis\s+(?:conversation|chat)\b|(?:이|현재)\s*(?:대화|채팅))/i;
+  const ALLOW_LABEL_RE = /(?:\ballow\b|허용)/i;
+  const NEGATIVE_ALLOW_LABEL_RE = /(?:\bdeny\b|\bdisallow\b|\bnot\s+allow\b|\bdon['’]t\s+allow\b|거절|허용하지|허용\s*안\s*함|차단|취소)/i;
+  const KOREAN_APPROVAL_RE = /ChatGPT가\s+(.+?)(?:을\(를\)|을|를)\s+사용하도록\s+허용할까요\?/;
   const DEFAULT_ENABLED = false;
 
   let enabled = false;
@@ -38,9 +41,13 @@
 
   const parseConversationLabel = (element) => {
     const label = accessibleLabel(element);
-    const match = CONVERSATION_LABEL_RE.exec(label);
-    if (!match) return null;
-    return { label, appName: normalize(match[1]) };
+    const exactMatch = ENGLISH_CONVERSATION_LABEL_RE.exec(label);
+    if (exactMatch) return { label, appName: normalize(exactMatch[1]) };
+
+    if (!label || NEGATIVE_ALLOW_LABEL_RE.test(label)) return null;
+    if (!CONVERSATION_SCOPE_RE.test(label) || !ALLOW_LABEL_RE.test(label)) return null;
+
+    return { label, appName: '' };
   };
 
   const findConversationMenuItems = () => {
@@ -90,21 +97,29 @@
         const allowRect = allowButton.getBoundingClientRect();
         const allowCenterY = allowRect.top + allowRect.height / 2;
 
-        const candidates = buttons.filter((button) => {
-          if (button === allowButton || button === rejectButton || button.disabled || openedTriggers.has(button)) return false;
+        const eligibleButtons = buttons.filter((button) =>
+          button !== allowButton &&
+          button !== rejectButton &&
+          !button.disabled &&
+          !openedTriggers.has(button)
+        );
 
-          const rect = button.getBoundingClientRect();
-          const centerY = rect.top + rect.height / 2;
-          const horizontallyAdjacent = rect.left >= allowRect.right - 6 && rect.left <= allowRect.right + 18;
-          const verticallyAligned = Math.abs(centerY - allowCenterY) <= 10;
-          const compact = rect.width > 0 && rect.width <= 48 && rect.height <= Math.max(52, allowRect.height + 12);
-          const menuish = button.getAttribute('aria-haspopup') === 'menu' ||
-            button.hasAttribute('aria-expanded') ||
-            normalize(button.textContent) === '' ||
-            Boolean(parseConversationLabel(button));
+        let candidates = eligibleButtons.filter((button) =>
+          button.getAttribute('aria-haspopup') === 'menu' || button.hasAttribute('aria-expanded')
+        );
 
-          return horizontallyAdjacent && verticallyAligned && compact && menuish;
-        });
+        if (candidates.length !== 1) {
+          candidates = eligibleButtons.filter((button) => {
+            const rect = button.getBoundingClientRect();
+            const centerY = rect.top + rect.height / 2;
+            const horizontallyAdjacent = rect.left >= allowRect.right - 6 && rect.left <= allowRect.right + 18;
+            const verticallyAligned = Math.abs(centerY - allowCenterY) <= 10;
+            const compact = rect.width > 0 && rect.width <= 48 && rect.height <= Math.max(52, allowRect.height + 12);
+            const menuish = normalize(button.textContent) === '' || Boolean(parseConversationLabel(button));
+
+            return horizontallyAdjacent && verticallyAligned && compact && menuish;
+          });
+        }
 
         if (candidates.length === 1) {
           results.push({
@@ -185,8 +200,10 @@
       openedTriggers.add(element);
       console.info(`[ChatGPT Approval Helper] opening conversation-level consent menu for: ${appName} (${source})`);
       openSplitMenuTrigger(element);
-      // No timer or polling here. The menu insertion / aria-state change is observed below,
-      // and that DOM mutation schedules the next scan immediately.
+      // A one-shot next-frame scan covers menus rendered after the click even if the
+      // insertion itself has no immediately recognizable text. DOM mutations remain
+      // the primary trigger; this is not polling.
+      requestAnimationFrame(() => requestScan());
     } finally {
       scanRunning = false;
     }
@@ -203,17 +220,18 @@
   };
 
   const nodeLooksRelevant = (node) => {
-    if (!(node instanceof Element)) return false;
+    const element = node instanceof Element ? node : node?.parentElement;
+    if (!(element instanceof Element)) return false;
 
-    if (CONVERSATION_LABEL_RE.test(accessibleLabel(node))) return true;
+    if (parseConversationLabel(element)) return true;
 
-    const text = normalize(node.textContent);
-    if (text.includes('for this conversation')) return true;
+    const text = normalize(element.textContent);
+    if (CONVERSATION_SCOPE_RE.test(text) && ALLOW_LABEL_RE.test(text) && !NEGATIVE_ALLOW_LABEL_RE.test(text)) return true;
     if (text.includes('사용하도록 허용할까요?')) return true;
     if (text === '허용하기' || text === '거절하기') return true;
 
-    for (const element of node.querySelectorAll?.('button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]') || []) {
-      if (CONVERSATION_LABEL_RE.test(accessibleLabel(element))) return true;
+    for (const candidate of element.querySelectorAll?.('button, [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]') || []) {
+      if (parseConversationLabel(candidate)) return true;
     }
 
     return false;
