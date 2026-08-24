@@ -8,8 +8,10 @@ Minimal Chrome MV3 extension for `https://chatgpt.com/*`.
 
 - Uses a `MutationObserver`; no screenshot polling, coordinate clicking, CUA, Chrome debugger API, or network requests.
 - Matches conversation-level consent only:
-  - `Allow <APP> for this conversation`
-  - On the Korean approval-card layout, structural detection is used only to locate the split-menu trigger; the final approval still requires the exact conversation-level menu item.
+  - Exact English: `Allow <APP> for this conversation`.
+  - Localized English/Korean conversation-scope variants containing `this conversation` / `this chat` or `이/현재 대화/채팅` together with an allow action.
+  - Korean approval cards such as `ChatGPT가 <APP>을(를) 사용하도록 허용할까요?` are used only to locate the split-menu trigger; the final click still requires a conversation-scoped allow menu item.
+- Explicit deny/disallow/cancel variants are rejected even if they mention the current conversation.
 - No app allowlist: any app is eligible if the prompt is specifically conversation-level consent.
 - Acts only when exactly one matching approval/menu target is present.
 - Generic `Allow`, delete, submit, payment, permission-change, and other confirmations are ignored.
